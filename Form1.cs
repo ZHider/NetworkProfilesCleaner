@@ -217,70 +217,85 @@ namespace NetworkProfilesCleaner
         /// <param name="outputFile">输出文件名</param>
         public static void ExportRegistryKeyArray(IEnumerable<string> registryKeys, string outputFile)
         {
-            /// 新建一个临时文件夹，把中间文件都放进去
+            // 新建一个临时文件夹，把中间文件都放进去
             var TempDirPath = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
+
+            /// 用于获取在这个临时文件夹中的文件名
+            string TempFilePath(string filename)
+            {
+                var _filename = filename + ".reg";
+                return Path.Combine(TempDirPath, _filename);
+            }
+
+            /// 阻塞同步的使用 REG.EXE 导出注册表为 REG 文件
+            Process ExportRegSync(string keysPath, string outFile, string systemBits)
+            {
+                var arg = $"EXPORT \"{keysPath}\" \"{outFile}\" /y /reg:{systemBits}";
+                var startInfo = new ProcessStartInfo("reg.exe", arg)
+                {
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+                var process = new Process { StartInfo = startInfo };
+                process.Start();
+                process.WaitForExit();
+
+                return process;
+            }
+
+            // 注册表路径数组化来获取长度
+            var rKeys = registryKeys.ToArray();
+            // 用来存放线程的标准错误输出
+            string[] threadsStdError = new string[rKeys.Length];
+
+            bool msgBoxRetry;
+
+            // 如果重新开始，就从这里开始
+            keyBackupStart:
+
+            // 重试信息框值
+            msgBoxRetry = false;
+
             try
             {
+                // 创建临时文件夹
                 Directory.CreateDirectory(TempDirPath);
-                string TempFilePath(string filename)
-                {
-                    var _filename = filename + ".reg";
-                    return Path.Combine(TempDirPath, _filename);
-                }
 
-                var systemBits = "64";
-
-                if (IntPtr.Size == 8)
-                {
-                    systemBits = "64";
-                }
-                else
-                {
-                    systemBits = "32";
-                }
+                // 判断系统位数
+                string systemBits;
+                if (IntPtr.Size == 8) 
+                { systemBits = "64"; }
+                else { systemBits = "32"; }
 
 
                 // 为每个注册表项创建一个临时.reg文件
-                var rKeys = registryKeys.ToArray();
-                string[] tempFiles = 
+                var tempFiles = 
                     Enumerable.Range(0, rKeys.Length)
                     .Select(i => TempFilePath(i.ToString("D4")))
                     .ToArray();
-                Thread[] threads = new Thread[rKeys.Length];
-
-            
-                for (int i = 0; i < rKeys.Length; i++)
-                {
-                    var keysPath = rKeys[i];
-
-                    var tempFile = TempFilePath(i.ToString());
-                    var thread = new Thread(() =>
+                
+                
+                var threads = rKeys.Select((keysPath, i) =>
+                    new Thread(() =>
                     {
-                        var arg = $"EXPORT \"{keysPath}\" \"{tempFile}\" /y /reg:{systemBits}";
-                        var startInfo = new ProcessStartInfo("reg.exe", arg)
-                        {
-                            RedirectStandardOutput = true,
-                            RedirectStandardError = true,
-                            UseShellExecute = false,
-                            CreateNoWindow = true
-                        };
-                        var process = new Process { StartInfo = startInfo };
-                        process.Start();
-                        process.WaitForExit();
+                        var process = ExportRegSync(keysPath, tempFiles[i], systemBits);
 
-                        Console.WriteLine(arg + "\n"
+                        var stdErr = process.StandardError.ReadToEnd().Trim();
+                        Console.WriteLine(process.StartInfo.Arguments + "\n"
                             + process.StandardOutput.ReadToEnd().Trim() + "|"
-                            + process.StandardError.ReadToEnd().Trim()
+                            + stdErr
                         );
-                    });
-                    thread.Start();
 
-                    threads[i] = thread;
-                    tempFiles[i] = tempFile;
-                }
+                        // 储存标准错误
+                        threadsStdError[i] = stdErr;
+                    }
+                )).ToList();
+                threads.ForEach( t => t.Start());
 
                 // 等待所有线程执行完毕
-                threads.All((t) => { t.Join(); return true; });
+                threads.ForEach((t) => t.Join());
 
                 // 将所有临时.reg文件合并到新的.reg文件
                 var tmpOutfile = TempFilePath("output");
@@ -291,17 +306,32 @@ namespace NetworkProfilesCleaner
                 // 移动文件为最终输出文件
                 File.Copy(tmpOutfile, outputFile, true);
             }
+            catch (FileNotFoundException ex)
+            {
+                var errOutputs = threadsStdError
+                    .Where(s => !string.IsNullOrEmpty(s))
+                    .Select(s => s.Trim())
+                    .ToArray();
+                var msgBox = MessageBox.Show(
+                    "Error when backup: " + ex.Message
+                    + "\nWith Error output:\n"
+                    + string.Join(Environment.NewLine, errOutputs),
+                    "Backup Error",
+                    MessageBoxButtons.RetryCancel, MessageBoxIcon.Error
+                );
+                msgBoxRetry = msgBox == DialogResult.Retry;
+            }
             finally
             {
                 // 删除临时文件夹
                 Directory.Delete(TempDirPath, true);
             }
 
-            
+            // 如果重试就重新开始
+            if (msgBoxRetry) { goto keyBackupStart; }
+
         }
-
     }
-
 
     internal struct profile
     {
