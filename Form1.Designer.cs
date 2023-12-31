@@ -28,6 +28,7 @@
         /// </summary>
         private void InitializeComponent()
         {
+            this.components = new System.ComponentModel.Container();
             this.tableLayoutPanel1 = new System.Windows.Forms.TableLayoutPanel();
             this.groupBox1 = new System.Windows.Forms.GroupBox();
             this.listBox_2clean = new System.Windows.Forms.ListBox();
@@ -37,6 +38,7 @@
             this.button_c2s = new System.Windows.Forms.Button();
             this.button_s2c = new System.Windows.Forms.Button();
             this.button_swap = new System.Windows.Forms.Button();
+            this.button_ClearSelection = new System.Windows.Forms.Button();
             this.flowLayoutPanel2 = new System.Windows.Forms.FlowLayoutPanel();
             this.button_refresh = new System.Windows.Forms.Button();
             this.button_clear = new System.Windows.Forms.Button();
@@ -44,6 +46,7 @@
             this.button_open = new System.Windows.Forms.Button();
             this.checkBox_mutiline = new System.Windows.Forms.CheckBox();
             this.tableLayoutPanel2 = new System.Windows.Forms.TableLayoutPanel();
+            this.toolTip = new System.Windows.Forms.ToolTip(this.components);
             this.tableLayoutPanel1.SuspendLayout();
             this.groupBox1.SuspendLayout();
             this.groupBox2.SuspendLayout();
@@ -126,10 +129,11 @@
             this.flowLayoutPanel1.Controls.Add(this.button_c2s);
             this.flowLayoutPanel1.Controls.Add(this.button_s2c);
             this.flowLayoutPanel1.Controls.Add(this.button_swap);
+            this.flowLayoutPanel1.Controls.Add(this.button_ClearSelection);
             this.flowLayoutPanel1.FlowDirection = System.Windows.Forms.FlowDirection.TopDown;
-            this.flowLayoutPanel1.Location = new System.Drawing.Point(249, 72);
+            this.flowLayoutPanel1.Location = new System.Drawing.Point(249, 59);
             this.flowLayoutPanel1.Name = "flowLayoutPanel1";
-            this.flowLayoutPanel1.Size = new System.Drawing.Size(34, 78);
+            this.flowLayoutPanel1.Size = new System.Drawing.Size(34, 104);
             this.flowLayoutPanel1.TabIndex = 2;
             // 
             // button_c2s
@@ -161,6 +165,16 @@
             this.button_swap.Text = "<>";
             this.button_swap.UseVisualStyleBackColor = true;
             this.button_swap.Click += new System.EventHandler(this.button_swap_Click);
+            // 
+            // button_ClearSelection
+            // 
+            this.button_ClearSelection.Location = new System.Drawing.Point(3, 81);
+            this.button_ClearSelection.Name = "button_ClearSelection";
+            this.button_ClearSelection.Size = new System.Drawing.Size(30, 20);
+            this.button_ClearSelection.TabIndex = 3;
+            this.button_ClearSelection.Text = "CS";
+            this.button_ClearSelection.UseVisualStyleBackColor = true;
+            this.button_ClearSelection.Click += new System.EventHandler(this.button_ClearSelection_Click);
             // 
             // flowLayoutPanel2
             // 
@@ -283,6 +297,8 @@
         private System.Windows.Forms.TableLayoutPanel tableLayoutPanel2;
         private System.Windows.Forms.Button button_swap;
         private System.Windows.Forms.CheckBox checkBox_mutiline;
+        private System.Windows.Forms.Button button_ClearSelection;
+        private System.Windows.Forms.ToolTip toolTip;
     }
 }
 

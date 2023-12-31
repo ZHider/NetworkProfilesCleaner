@@ -133,10 +133,23 @@ namespace NetworkProfilesCleaner
 
         private void button_open_Click(object sender, EventArgs e)
         {
+            profile? selectedItem;
+            selectedItem = listBox_2save.SelectedItems.Count == 0 ? null : listBox_2save.SelectedItems[0] as profile?;
+            selectedItem = listBox_2clean.SelectedItems.Count == 0 ? selectedItem : listBox_2clean.SelectedItems[0] as profile?;
+
+            string GUID = "";
+            if (selectedItem.HasValue)
+            {
+                // 文本拼接需要，前面加一个 \
+                GUID = "\\" + selectedItem.Value.GUID;
+            }
+
+
             Process.Start("reg.exe",
                 @"ADD HKCU\Software\Microsoft\Windows\CurrentVersion\Applets\Regedit /v LastKey /t REG_SZ /d "
                 + "\""
                 + @"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\NetworkList\Profiles"
+                + GUID
                 + "\""
                 + " /f /reg:" + systemBits).WaitForExit();
             Process.Start("C:\\Windows\\regedit", "-m");
@@ -162,6 +175,18 @@ namespace NetworkProfilesCleaner
                 systemBits = "32";
                 this.Text += " x32";
             }
+
+            // 设置帮助说明
+            toolTip.InitialDelay = 1000;
+            toolTip.AutoPopDelay = 10000;
+            toolTip.SetToolTip(button_swap, "Swap all items between 2 lists");
+            toolTip.SetToolTip(button_ClearSelection, "Clear all the selection");
+            toolTip.SetToolTip(button_open, 
+                "Open current selected profile in Regedit.exe.\n"
+                + "If no item were selected, any specific profile will NOT be located.\n"
+                + "If item(s) in both lists were selected, the first selected profile in 2Clean list will be located."
+            );
+            toolTip.SetToolTip(checkBox_mutiline, "If the lists are multi-column.\nMight be helpful if there's a lot of items");
         }
 
         private void checkBox_mutiline_CheckedChanged(object sender, EventArgs e)
@@ -169,6 +194,13 @@ namespace NetworkProfilesCleaner
             listBox_2clean.MultiColumn = checkBox_mutiline.Checked;
             listBox_2save.MultiColumn = checkBox_mutiline.Checked;
         }
+
+        private void button_ClearSelection_Click(object sender, EventArgs e)
+        {
+            listBox_2clean.SelectedItem = null;
+            listBox_2save.SelectedItem = null;
+        }
+
     }
 
 
