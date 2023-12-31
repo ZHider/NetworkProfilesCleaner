@@ -6,7 +6,7 @@ using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Linq;
-using System.Threading.Tasks;
+using System.Threading;
 using System.Windows.Forms;
 using Microsoft.Win32;
 
@@ -14,7 +14,7 @@ namespace NetworkProfilesCleaner
 {
     public partial class Form1 : Form
     {
-        public RegistryView regView;
+        // public RegistryView regView;
         public string systemBits;
 
 
@@ -23,12 +23,12 @@ namespace NetworkProfilesCleaner
             InitializeComponent();
         }
 
-        private async void button_refresh_Click(object sender, EventArgs e)
+        private void button_refresh_Click(object sender, EventArgs e)
         {
             button_refresh.Enabled = false;
 
             // 打开注册表项
-            var key = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, regView)
+            var key = Registry.LocalMachine
                 .OpenSubKey("SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\NetworkList\\Profiles");
 
             if (key == null)
@@ -40,19 +40,16 @@ namespace NetworkProfilesCleaner
             listBox_2clean.Items.Clear();
             listBox_2save.Items.Clear();
 
-            // 异步读取注册表
-            await Task.Run(() =>
+            // 同步读取注册表
+            foreach (string subKeyName in key.GetSubKeyNames())
             {
-                foreach (string subKeyName in key.GetSubKeyNames())
-                {
-                    profile p = new profile(key.OpenSubKey(subKeyName));
+                profile p = new profile(key.OpenSubKey(subKeyName));
 
-                    this.Invoke(new Action(() => {
-                        listBox_2clean.Items.Add(p);
-                    }));
-                }
+                this.Invoke(new Action(() => {
+                    listBox_2clean.Items.Add(p);
+                }));
+            }
 
-            });
 
             button_refresh.Enabled = true;
         }
@@ -84,7 +81,7 @@ namespace NetworkProfilesCleaner
                 { return; }
 
             // 打开注册表项
-            var rootKey = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, regView)
+            var rootKey = Registry.LocalMachine
                 .OpenSubKey("SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\NetworkList\\Profiles", true);
 
             var exceptions = new List<Exception>();
@@ -109,7 +106,7 @@ namespace NetworkProfilesCleaner
             }
             else
             {
-                MessageBox.Show(string.Join("\n", exceptions), "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(exceptions[0].ToString(), "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
 
         }
@@ -150,18 +147,20 @@ namespace NetworkProfilesCleaner
             this.Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
 
             // 32位进程只能打开32位regedit.exe，32位和64位有些注册表是隔离的
-            button_open.Enabled = !(Environment.Is64BitOperatingSystem ^ Environment.Is64BitProcess);
+            // button_open.Enabled = !(Environment.Is64BitOperatingSystem ^ Environment.Is64BitProcess);
 
             // 32Bits / 64Bits 注册表兼容
-            if (Environment.Is64BitOperatingSystem)
+            if (IntPtr.Size == 8)
             {
-                regView = RegistryView.Registry64;
+                // regView = RegistryView.Registry64;
                 systemBits = "64";
+                this.Text += " x64";
             }
             else
             {
-                regView = RegistryView.Registry32;
+                // regView = RegistryView.Registry32;
                 systemBits = "32";
+                this.Text += " x32";
             }
         }
 
@@ -218,62 +217,87 @@ namespace NetworkProfilesCleaner
         /// <param name="outputFile">输出文件名</param>
         public static void ExportRegistryKeyArray(IEnumerable<string> registryKeys, string outputFile)
         {
-            var systemBits = "64";
-
-            if (Environment.Is64BitOperatingSystem)
+            /// 新建一个临时文件夹，把中间文件都放进去
+            var TempDirPath = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
+            try
             {
-                systemBits = "64";
-            }
-            else
-            {
-                systemBits = "32";
-            }
-
-
-            // 为每个注册表项创建一个临时.reg文件
-            var tempFiles = new List<string>();
-            var tasks = new List<Task>();
-            int i = 0;
-            foreach (var keyPath in registryKeys)
-            {
-                var tempFile = Path.GetTempFileName() + ".reg";
-                var task = Task.Run(() =>
+                Directory.CreateDirectory(TempDirPath);
+                string TempFilePath(string filename)
                 {
-                    var arg = $"EXPORT \"{keyPath}\" \"{tempFile}\" /y /reg:{systemBits}";
-                    Debug.Print(arg);
-                    var startInfo = new ProcessStartInfo("reg.exe", arg)
+                    var _filename = filename + ".reg";
+                    return Path.Combine(TempDirPath, _filename);
+                }
+
+                var systemBits = "64";
+
+                if (IntPtr.Size == 8)
+                {
+                    systemBits = "64";
+                }
+                else
+                {
+                    systemBits = "32";
+                }
+
+
+                // 为每个注册表项创建一个临时.reg文件
+                var rKeys = registryKeys.ToArray();
+                string[] tempFiles = 
+                    Enumerable.Range(0, rKeys.Length)
+                    .Select(i => TempFilePath(i.ToString("D4")))
+                    .ToArray();
+                Thread[] threads = new Thread[rKeys.Length];
+
+            
+                for (int i = 0; i < rKeys.Length; i++)
+                {
+                    var keysPath = rKeys[i];
+
+                    var tempFile = TempFilePath(i.ToString());
+                    var thread = new Thread(() =>
                     {
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true,
-                        UseShellExecute = false,
-                        CreateNoWindow = true
-                    };
-                    var process = new Process { StartInfo = startInfo };
-                    process.Start();
-                    process.WaitForExit();
+                        var arg = $"EXPORT \"{keysPath}\" \"{tempFile}\" /y /reg:{systemBits}";
+                        var startInfo = new ProcessStartInfo("reg.exe", arg)
+                        {
+                            RedirectStandardOutput = true,
+                            RedirectStandardError = true,
+                            UseShellExecute = false,
+                            CreateNoWindow = true
+                        };
+                        var process = new Process { StartInfo = startInfo };
+                        process.Start();
+                        process.WaitForExit();
 
-                    return process.StandardError.ReadToEnd() + process.StandardOutput.ReadToEnd(); 
-                });
+                        Console.WriteLine(arg + "\n"
+                            + process.StandardOutput.ReadToEnd().Trim() + "|"
+                            + process.StandardError.ReadToEnd().Trim()
+                        );
+                    });
+                    thread.Start();
 
+                    threads[i] = thread;
+                    tempFiles[i] = tempFile;
+                }
 
-                tasks.Add(task);
-                tempFiles.Add(tempFile);
-                i++;
+                // 等待所有线程执行完毕
+                threads.All((t) => { t.Join(); return true; });
+
+                // 将所有临时.reg文件合并到新的.reg文件
+                var tmpOutfile = TempFilePath("output");
+                foreach (string tempFile in tempFiles)
+                {
+                    File.AppendAllText(tmpOutfile, File.ReadAllText(tempFile) + "\n");
+                }
+                // 移动文件为最终输出文件
+                File.Copy(tmpOutfile, outputFile, true);
             }
-
-            // 等待所有任务完成
-            Task.WaitAll(tasks.ToArray());
-
-            // 写入.reg文件的头部信息
-            //File.WriteAllText(outputFile, "Windows Registry Editor Version 5.00\n\n");
-
-            // 将所有临时.reg文件合并到新的.reg文件
-
-            foreach (string tempFile in tempFiles)
+            finally
             {
-                File.AppendAllText(outputFile, File.ReadAllText(tempFile) + "\n");
-                File.Delete(tempFile);  // 删除临时文件
+                // 删除临时文件夹
+                Directory.Delete(TempDirPath, true);
             }
+
+            
         }
 
     }
@@ -300,8 +324,7 @@ namespace NetworkProfilesCleaner
 
         public override int GetHashCode()
         {
-            int hashCode = 1496550612;
-            hashCode = hashCode * -1521134295 + EqualityComparer<string>.Default.GetHashCode(GUID);
+            int hashCode = EqualityComparer<string>.Default.GetHashCode(GUID);
             return hashCode;
         }
 
